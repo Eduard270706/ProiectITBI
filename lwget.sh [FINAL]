@@ -1,0 +1,161 @@
+	#!/bin/bash
+
+	#PRETTY
+	ROSU="\e[31m"
+	RESET="\e[0m"
+	BOLD="\e[1m"
+	VERDE="\e[32m"
+	MAGENTA="\e[35m"
+	#CLEANUP
+	
+	if [ "$1" = "cleanup" ]; then
+	   echo -e "${BOLD}${VERDE}LAZY_cleanup:${RESET} Se sterg toate datele..."
+	   rm -rf date
+	   echo -e "${BOLD}${VERDE}LAZY_cleanup:${RESET} Stergere completa!"
+	   exit 0
+	fi
+
+	URL="$1"
+	
+	#SINTAXA
+	
+	[ -z "$URL" ] && 
+	   {
+	   echo -e "${BOLD}${ROSU}LAZY_exit1:${RESET} Sintaxa invalida!"
+	   echo -e "${BOLD}${ROSU}LAZY_exit1:${RESET} Apeleaza: $0 <URL> | $0 cleanup"; 
+	   exit 1; 
+	   }
+	  
+	case "$URL" in 
+	   http://*|https://*) : ;;
+	   *) URL="https://$URL" ;;
+	esac 
+
+	mkdir -p date/nivel0
+	mkdir -p date/vbs
+	cd date
+	
+	#DATE
+	
+	FINISH="./vbs/finish.txt"
+	touch "$FINISH"
+	VAZUT="./vbs/vazut.txt"
+	LINKS="./vbs/links0.txt"
+	START="./vbs/start_url.txt"
+	NIVEL="./vbs/NIVEL.txt"
+	DOMENIU="$URL"
+	DIR="$URL/"
+	START_URL=""
+	
+	if [ "$(cat "$FINISH")" == "1" ]; then
+	   echo -e "${BOLD}${VERDE}LAZY:${RESET} Programul a ajuns la adancimea maxima!"
+	   echo -e "${BOLD}${VERDE}LAZY:${RESET} Scrie $0 cleanup si incearca alt site!"
+	   exit 0
+	fi
+	
+	if [ ! -f "$NIVEL" ]; then
+	   echo 0 > "$NIVEL"
+	fi	
+	
+	
+	[ -z "$x" ] && x="$(cat "$NIVEL")"
+	
+	if [ ! -f "$START" ]; then
+	   echo "$URL" > "$START"
+	fi
+
+	[ -f "$START" ] && START_URL="$(cat "$START")"
+
+	
+	if [ ! -f fisier.html ]; then
+		if ! wget -q -O nivel0/fisier1.html "$URL"; then
+		   echo -e "${BOLD}${ROSU}LAZY_exit1:${RESET} URL invalid sau inaccesibil!"
+		   if [ "$x" -eq 0 ]; then
+		   	rm -rf ../date
+		   fi
+		   exit 1
+		else
+		   if [ "$URL" == "$START_URL" ] || [ -z "$START_URL" ]; then
+			   echo -e "${BOLD}${VERDE}LAZY_n$x($URL):${RESET} Se instaleaza fisierele!"
+			   echo -e "$URL" > ./nivel0/fisier1.url
+			   echo -e "$URL" > "$LINKS"
+			   echo -e "$URL" >> "$VAZUT"
+		   fi
+		fi
+	fi
+	
+	#MAIN
+	
+	if [ "$URL" != "$START_URL" ] && [ -n "$START_URL" ] ; then
+	   echo -e "${BOLD}${ROSU}LAZY_Error:${RESET} Proiectul este pentru $START_URL."
+	   echo -e "${BOLD}${ROSU}LAZY_Error:${RESET} Tu ai apelat pentru $URL."
+	   echo -e "${BOLD}${ROSU}LAZY_Error:${RESET} Apeleaza $0 cleanup pentru a incepe alt site."
+	   exit 1
+	else
+	LINKS="./vbs/links$x.txt"
+	if [ "$x" -ne 0 ]; then
+	   mkdir "nivel$x"
+	fi
+	((x++))    
+	echo "$x" > "$NIVEL"
+	LINKS2="./vbs/links$x.txt"
+	TEMP=$(mktemp)	
+	if [ "$x" -ne 1 ]; then
+	i=0
+	while IFS= read -r link; do
+	  [[ -z "$link" ]] && continue
+	  grep -Fxq "$link" "$VAZUT" && continue
+	  ((i++))
+	  end=1
+	  out="nivel$((x-1))/fisier$i.html"
+	  echo $link >> "$VAZUT"
+	  echo $link > "nivel$((x-1))/fisier$i.url"
+	  wget -q -O "$out" "$link"
+	[[ -z "$link" ]] && continue
+	done < "$LINKS" 
+	if (( end == 0 )); then
+	   echo -e "${BOLD}${VERDE}LAZY:${RESET} Adancime maxima atinsa! ${MAGENTA}(NIVEL $((x-1)))"
+	   echo 1 > "$FINISH"
+	   exit 0
+	fi  
+	fi
+	
+	sort -u "$VAZUT" -o "$VAZUT"
+	for file in nivel$((x-1))/*.html; do
+	        [ -f "$file" ] || continue
+		url_curent=$(cat "${file%.html}.url")
+		
+		DOMENIU=$(echo "$url_curent" | cut -d'/' -f1-3)
+		if [[ "$url_curent" == */*/* ]]; then
+	  	DIR="${url_curent%/*}/"
+		else
+	  	DIR="$DOMENIU/"
+		fi
+		
+		grep -Ei '<(a|area|link)[^>]*href="' "$file" | cut -d'"' -f2 \
+		| grep -v '^#' \
+		| grep -v '^javascript:' \
+		| grep -v '^mailto:' \
+		| grep -v '^tel:' \
+		| grep -v '\.css$' \
+		| grep -v '\.js$' \
+		| grep -E '/|^https?://' \
+		| while IFS= read -r link; do
+	   	link="${link%%#*}"
+	   	[[ -z "$link" ]] && continue
+		if [[ "$link" == http://* || "$link" == https://* ]]; then
+		     echo "$link" 
+		elif [[ "$link" == /* ]]; then
+		     echo "$DOMENIU$link"
+		else
+		     echo "$DIR$link"
+		fi 
+		done 
+	done | sort -u > "$TEMP"	
+	
+	mv "$TEMP" "$LINKS2"
+	echo -e "${BOLD}${VERDE}LAZY_n$((x-1))($URL):${RESET} Fisierele au fost instalate!"
+	echo -e "${BOLD}${VERDE}LAZY:${RESET} Apeleaza $0 $START_URL pentru ${MAGENTA}nivelul $x${RESET}!"
+	fi
+
+	
